@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>土城台北親家｜周邊月租汽車停車場互動地圖</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --fg: #0f172a;
+      --muted: #475569;
+      --primary: #2563eb;
+      --primary-fg: #ffffff;
+      --success: #16a34a;
+      --error: #dc2626;
+      --link: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-shrink: 0;
+      z-index: 20;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .logo {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: var(--primary); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px;
+    }
+    h1 { margin: 0; font-size: 15.5px; font-weight: 700; }
+    .sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted); align-items: center; }
+    .legend-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      background: var(--bg); border: 1px solid var(--border);
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 375px 1fr;
+      min-height: 0;
+    }
+    @media (max-width: 900px) {
+      body { height: auto; overflow: auto; }
+      .workspace { grid-template-columns: 1fr; }
+      aside { max-height: 360px !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+      #map { min-height: 420px; }
+    }
+
+    aside {
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .controls {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      flex-shrink: 0;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .filter-btn {
+      padding: 5px 9px; border-radius: 7px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+      cursor: pointer; transition: all .15s;
+    }
+    .filter-btn.active {
+      background: var(--primary); color: var(--primary-fg); border-color: var(--primary);
+    }
+    .bar {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: var(--muted); gap: 8px;
+    }
+    select {
+      padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--fg); font-size: 12px;
+    }
+
+    #parking-list { flex: 1; overflow-y: auto; }
+    .parking-card {
+      width: 100%; text-align: left; background: transparent; border: none;
+      border-bottom: 1px solid var(--border); padding: 12px 14px;
+      cursor: pointer; transition: background .15s; display: block;
+    }
+    .parking-card:hover { background: #f1f5f9; }
+    .parking-card.selected {
+      background: #eff6ff;
+      box-shadow: inset 4px 0 0 var(--primary);
+    }
+    .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .rank-badge {
+      width: 22px; height: 22px; border-radius: 50%; color: #fff;
+      font-size: 12px; font-weight: 700; display: inline-flex;
+      align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .name { font-size: 13.5px; font-weight: 700; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dist-pill {
+      font-size: 11.5px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, monospace;
+      padding: 2px 8px; border-radius: 999px; background: var(--card);
+      border: 1px solid var(--border); color: var(--fg); flex-shrink: 0;
+    }
+    .card-mid { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
+    .type-tag { padding: 1px 6px; border-radius: 5px; border: 1px solid; font-weight: 600; }
+    .card-bot { margin-top: 5px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+    main {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #map { flex: 1; width: 100%; z-index: 1; }
+
+    /* Custom Leaflet markers */
+    .origin-marker {
+      display: flex; align-items: center; gap: 5px;
+      background: #dc2626; color: #fff; font-weight: 700; font-size: 12px;
+      padding: 4px 9px; border-radius: 999px; border: 2px solid #fff;
+      box-shadow: 0 3px 10px rgba(220, 38, 38, 0.45);
+      white-space: nowrap;
+    }
+    .p-marker {
+      width: 28px; height: 28px; border-radius: 50%;
+      color: #fff; font-weight: 800; font-size: 12.5px;
+      display: flex; align-items: center; justify-content: center;
+      border: 2.5px solid #fff;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+      transition: transform .15s;
+    }
+    .p-marker.selected {
+      transform: scale(1.24);
+      box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.28), 0 3px 10px rgba(15, 23, 42, 0.45);
+    }
+    .route-badge {
+      background: #1d4ed8; color: #fff; font-weight: 700; font-size: 12px;
+      padding: 4px 10px; border-radius: 999px; border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(29, 78, 216, 0.45);
+      white-space: nowrap;
+    }
+    @keyframes dashFlow { to { stroke-dashoffset: -28; } }
+    .walk-dash { animation: dashFlow 1s linear infinite; }
+
+    #detail-panel {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 13px 16px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .detail-wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
+    .detail-info { flex: 1; min-width: 260px; }
+    .detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .detail-head h2 { margin: 0; font-size: 15.5px; font-weight: 700; }
+    .detail-meta { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
+    .stat-grid {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      gap: 8px;
+    }
+    .stat-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 10px;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); }
+    .stat-val { font-size: 13px; font-weight: 700; margin-top: 2px; }
+    .note { margin: 7px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .actions { display: flex; flex-direction: column; gap: 7px; min-width: 136px; }
+    @media (max-width: 680px) { .actions { flex-direction: row; flex-wrap: wrap; } }
+    .btn {
+      padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+      text-align: center; text-decoration: none; cursor: pointer;
+      border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+    }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-link { color: var(--link); }
+    .btn:hover { opacity: 0.9; }
+
+    #toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+      padding: 8px 14px; border-radius: 8px;
+      background: var(--fg); color: #fff; font-size: 12px; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">P</div>
+      <div>
+        <h1>土城「台北親家」周邊月租汽車停車場互動地圖</h1>
+        <p class="sub">起點：新北市土城區中央路二段 159 號｜結合台灣通用電子地圖・可切換衛星圖・顯示真實步行路線</p>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="legend-pill"><i class="dot" style="background:var(--error)"></i>台北親家社區</span>
+      <span class="legend-pill"><i class="dot" style="background:var(--success)"></i>公辦民營</span>
+      <span class="legend-pill"><i class="dot" style="background:var(--primary)"></i>民營／商場</span>
+      <label class="legend-pill" style="cursor:pointer;">
+        <input type="checkbox" id="toggle-rings" checked style="margin:0;" />
+        顯示距離圈
+      </label>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside>
+      <div class="controls">
+        <div class="chips" id="filter-chips">
+          <button data-filter="all" class="filter-btn active">全部 (10)</button>
+          <button data-filter="near" class="filter-btn">步行 ≤ 8分</button>
+          <button data-filter="public" class="filter-btn">公辦民營</button>
+          <button data-filter="private" class="filter-btn">民營／連鎖</button>
+          <button data-filter="indoor" class="filter-btn">室內地下</button>
+        </div>
+        <div class="bar">
+          <span id="result-count">顯示 10 處停車場</span>
+          <label>排序：
+            <select id="sort-select">
+              <option value="walk">步行距離最近</option>
+              <option value="price">參考月租最低</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div id="parking-list"></div>
+    </aside>
+
+    <main>
+      <div id="map"></div>
+      <div id="detail-panel"></div>
+    </main>
+  </div>
+
+  <div id="toast">已複製電話</div>
+
+  <script>
+    const ORIGIN = { name: "台北親家社區", address: "新北市土城區中央路二段 159 號", lat: 24.9762788, lng: 121.4421053 };
+
+    const PARKINGS = [
+      { id:"p5", rank:1, name:"Times 土城中央路二段停車場", category:"private", indoor:false, typeLabel:"民營・室外平面", operator:"台灣普客二四（Times）", address:"新北市土城區中央路二段 29 號旁", phone:"0800-888-924", altPhone:"(02) 2504-6098", walk_m:426, walk_min:6, priceNum:8000, priceText:"約 $2,300～$8,000／月（依官網／現場公告）", note:"離社區步行最近，沿中央路二段直走即可抵達；名額常額滿，建議先致電客服或官網登記候補。", lat:24.9799794, lng:121.4430133, route:[[24.97628,121.442],[24.97643,121.442],[24.97668,121.442],[24.97693,121.442],[24.97741,121.44204],[24.97759,121.44207],[24.97826,121.44224],[24.97883,121.44242],[24.97946,121.4426],[24.98004,121.44277]] },
+      { id:"p2", rank:2, name:"中正停車場", category:"private", indoor:false, typeLabel:"民營・室外平面", operator:"私人經營場站", address:"新北市土城區中正路 56 巷 15 號對面", phone:"0988-755-343", altPhone:"", walk_m:443, walk_min:6, priceNum:2500, priceText:"約 $2,500／月（依現場確認）", note:"距離社區僅約 6 分鐘步程，月租行情相對親民，建議直接致電管理人確認空位。", lat:24.9746041, lng:121.4441937, route:[[24.97628,121.442],[24.97572,121.44201],[24.97491,121.44201],[24.97504,121.44251],[24.97517,121.44306],[24.97529,121.44355],[24.97539,121.44393],[24.97489,121.44404],[24.97459,121.4441]] },
+      { id:"p3", rank:3, name:"和平平面停車場", category:"public", indoor:false, typeLabel:"公辦民營・室外平面", operator:"興盛興有限公司", address:"新北市土城區和平路 26~28 號對面", phone:"0984-316-939", altPhone:"", walk_m:454, walk_min:6, priceNum:2400, priceText:"一般約 $2,400／月（身障約 $2,000）", note:"公有委外停車場，費用實惠且鄰近捷運土城站；通常依新北市交通局公告定期登記抽籤或候補。", lat:24.9728567, lng:121.4431739, route:[[24.97628,121.442],[24.97572,121.44201],[24.97491,121.44201],[24.97504,121.44251],[24.97456,121.44266],[24.97402,121.44284],[24.97354,121.44299],[24.9729,121.44328]] },
+      { id:"p1", rank:4, name:"土城區員林平面停車場", category:"public", indoor:false, typeLabel:"公辦民營・室外平面", operator:"文強交通有限公司", address:"新北市土城區中正路 67 巷 26 號對面（近中央路二段177巷）", phone:"(02) 2252-6381", altPhone:"0800-001-099", walk_m:554, walk_min:7, priceNum:3300, priceText:"一般約 $3,300／月（里民約 $2,700）", note:"與台北親家同屬員林里，符合里民資格可享優惠月票；採新北市公有場抽籤／候補機制。", lat:24.976525, lng:121.4445049, route:[[24.97628,121.442],[24.97572,121.44201],[24.97491,121.44201],[24.97504,121.44251],[24.97529,121.44355],[24.97554,121.44456],[24.97621,121.44446],[24.97662,121.44439],[24.97658,121.44452]] },
+      { id:"p6", rank:5, name:"Times 土城中央路二段第2停車場", category:"private", indoor:false, typeLabel:"民營・室外平面", operator:"台灣普客二四（Times）", address:"新北市土城區中央路二段 21 巷 128 號旁", phone:"0800-888-924", altPhone:"(02) 2504-6098", walk_m:574, walk_min:8, priceNum:8000, priceText:"約 $8,000／月（依官網／現場公告）", note:"位於中央路二段 21 巷內，近學府路與日月光商圈，可向 Times 客服查詢月租釋出。", lat:24.979913, lng:121.4443631, route:[[24.97628,121.442],[24.97693,121.442],[24.97759,121.44207],[24.97883,121.44242],[24.97892,121.44255],[24.97868,121.44322],[24.97938,121.44355],[24.97989,121.4439],[24.97978,121.44429]] },
+      { id:"p7", rank:6, name:"Times 土城興城路停車場", category:"private", indoor:false, typeLabel:"民營・室外平面", operator:"台灣普客二四（Times）", address:"新北市土城區興城路 112 號旁", phone:"0800-888-924", altPhone:"(02) 2504-6098", walk_m:664, walk_min:9, priceNum:8000, priceText:"約 $8,000／月（依官網／現場公告）", note:"位於土城國小周邊，沿中央路二段往南步行約 9 分鐘可達。", lat:24.9709474, lng:121.440235, route:[[24.97628,121.442],[24.97572,121.44201],[24.97478,121.44194],[24.97428,121.44137],[24.97378,121.44081],[24.97317,121.44054],[24.97236,121.4403],[24.97166,121.44006],[24.97091,121.44015]] },
+      { id:"p4", rank:7, name:"日月光廣場地下停車場", category:"private", indoor:true, typeLabel:"商場・室內地下（B1/B3）", operator:"俥亭停車／日月光廣場", address:"新北市土城區學府路二段 210 號（B1、B3）", phone:"0800-021-111", altPhone:"(02) 8262-3999", walk_m:744, walk_min:10, priceNum:5000, priceText:"約 $5,000／月（依館方最新公告）", note:"少見大型室內地下車位，免日曬雨淋；可洽俥亭客服或日月光 B3F 停管室詢問月租名額。", lat:24.978826, lng:121.4449871, route:[[24.97628,121.442],[24.97741,121.44204],[24.97883,121.44242],[24.97878,121.44294],[24.97875,121.44325],[24.97983,121.44385],[24.97991,121.44396],[24.97925,121.44566],[24.9791,121.44556]] },
+      { id:"p9", rank:8, name:"土城區中央公園地下停車場", category:"public", indoor:true, typeLabel:"公辦民營・室內地下（B1-B4）", operator:"大日開發有限公司", address:"新北市土城區中央路一段 325-1 號", phone:"(02) 2270-1372", altPhone:"(02) 2502-3317", walk_m:775, walk_min:10, priceNum:2700, priceText:"一般約 $2,700／月（里民約 $2,200）", note:"公有室內地下停車場，環境佳且月租便宜，採年度登記抽籤與候補制。", lat:24.9830079, lng:121.4439451, route:[[24.97628,121.442],[24.97741,121.44204],[24.97883,121.44242],[24.97957,121.44263],[24.9806,121.44294],[24.98172,121.44327],[24.98266,121.44358],[24.98307,121.44371]] },
+      { id:"p8", rank:9, name:"土城RICH停車場（城市車旅）", category:"private", indoor:true, typeLabel:"民營・室內地下", operator:"城市車旅（竑穗興業）", address:"新北市土城區金城路一段 26 號", phone:"0800-208-333", altPhone:"(02) 2246-2098", walk_m:907, walk_min:12, priceNum:3000, priceText:"約 $3,000／月（視釋出名額）", note:"室內地下車位、性價比高；除了電話洽詢，亦可透過 LINE 官方帳號「PARKING ONLINE」查詢月租。", lat:24.9694828, lng:121.4413441, route:[[24.97628,121.442],[24.97478,121.44194],[24.97428,121.44137],[24.97378,121.44081],[24.97268,121.4404],[24.97166,121.44006],[24.97071,121.43962],[24.97039,121.44014],[24.9697,121.44095],[24.9694,121.44122]] },
+      { id:"p10", rank:10, name:"俥萊土城中華場", category:"private", indoor:false, typeLabel:"民營・室外平面", operator:"俥萊有限公司", address:"新北市土城區中華路一段 221 號旁空地", phone:"0933-204-317", altPhone:"", walk_m:1050, walk_min:14, priceNum:6000, priceText:"約 $6,000／月（依現場公告）", note:"位於中華路一段，出入大馬路方便，可致電管理人員確認月租空位與條件。", lat:24.9837658, lng:121.4423487, route:[[24.97628,121.442],[24.97741,121.44204],[24.97826,121.44224],[24.97908,121.44054],[24.97943,121.4398],[24.98068,121.4404],[24.98231,121.44119],[24.9835,121.44183],[24.9839,121.44213]] }
+    ];
+
+    // Initialize Leaflet Map with Taiwan NLSC Electronic Map & Satellite
+    const nlscMap = L.tileLayer("https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}", {
+      maxZoom: 19,
+      attribution: "© 內政部國土測繪中心（台灣通用電子地圖）"
+    });
+    const nlscPhoto = L.tileLayer("https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}", {
+      maxZoom: 19,
+      attribution: "© 內政部國土測繪中心（正射影像）"
+    });
+    const osmMap = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    });
+
+    const map = L.map("map", {
+      center: [ORIGIN.lat, ORIGIN.lng],
+      zoom: 16,
+      layers: [nlscMap]
+    });
+
+    L.control.layers({
+      "台灣電子地圖（中文街景）": nlscMap,
+      "衛星航照圖": nlscPhoto,
+      "OpenStreetMap": osmMap
+    }, null, { position: "topright", collapsed: false }).addTo(map);
+
+    L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
+
+    // Distance Rings Layer
+    const ringsLayer = L.layerGroup().addTo(map);
+    [300, 500, 800].forEach(radius => {
+      L.circle([ORIGIN.lat, ORIGIN.lng], {
+        radius,
+        color: "#64748b",
+        weight: 1.2,
+        dashArray: "5 6",
+        fillOpacity: 0.02,
+        interactive: false
+      }).addTo(ringsLayer);
+    });
+
+    // Origin Marker
+    const originIcon = L.divIcon({
+      className: "",
+      html: `<div class="origin-marker">🏠 台北親家社區</div>`,
+      iconSize: [122, 28],
+      iconAnchor: [61, 14]
+    });
+    L.marker([ORIGIN.lat, ORIGIN.lng], { icon: originIcon, zIndexOffset: 1000 })
+      .bindPopup(`<b>台北親家社區</b><br/>${ORIGIN.address}`)
+      .addTo(map);
+
+    const markersLayer = L.layerGroup().addTo(map);
+    const routeLayer = L.layerGroup().addTo(map);
+
+    let state = { filter: "all", sort: "walk", selectedId: PARKINGS[0].id };
+
+    function getFilteredParkings() {
+      let list = PARKINGS.filter(p => {
+        if (state.filter === "near") return p.walk_min <= 8;
+        if (state.filter === "public") return p.category === "public";
+        if (state.filter === "private") return p.category === "private";
+        if (state.filter === "indoor") return p.indoor;
+        return true;
+      });
+      list.sort((a, b) => state.sort === "price" ? (a.priceNum - b.priceNum || a.walk_m - b.walk_m) : (a.walk_m - b.walk_m));
+      return list;
+    }
+
+    function renderMap(panToSelected = true) {
+      markersLayer.clearLayers();
+      routeLayer.clearLayers();
+
+      const visible = getFilteredParkings();
+      const selected = visible.find(p => p.id === state.selectedId) || visible[0];
+      if (selected && selected.id !== state.selectedId) state.selectedId = selected.id;
+
+      // Draw active walking route
+      if (selected) {
+        L.polyline(selected.route, {
+          color: "#2563eb",
+          weight: 8,
+          opacity: 0.25,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(routeLayer);
+
+        L.polyline(selected.route, {
+          color: "#1d4ed8",
+          weight: 4,
+          opacity: 0.95,
+          dashArray: "8 6",
+          className: "walk-dash",
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(routeLayer);
+
+        const mid = selected.route[Math.floor(selected.route.length / 2)];
+        const midIcon = L.divIcon({
+          className: "",
+          html: `<div class="route-badge">🚶 步行 ${selected.walk_m}m · 約 ${selected.walk_min} 分</div>`,
+          iconSize: [148, 28],
+          iconAnchor: [74, 14]
+        });
+        L.marker(mid, { icon: midIcon, interactive: false, zIndexOffset: 900 }).addTo(routeLayer);
+
+        if (panToSelected) {
+          const bounds = L.latLngBounds([[ORIGIN.lat, ORIGIN.lng], [selected.lat, selected.lng], ...selected.route]);
+          map.fitBounds(bounds, { padding: [55, 55], maxZoom: 17 });
+        }
+      }
+
+      // Draw parking markers
+      visible.forEach(p => {
+        const isSel = selected && p.id === selected.id;
+        const bg = p.category === "public" ? "#16a34a" : "#2563eb";
+        const icon = L.divIcon({
+          className: "",
+          html: `<div class="p-marker ${isSel ? "selected" : ""}" style="background:${bg}">${p.rank}</div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+        const m = L.marker([p.lat, p.lng], { icon, zIndexOffset: isSel ? 800 : 400 }).addTo(markersLayer);
+        m.bindTooltip(`${p.rank}. ${p.name}（步行約 ${p.walk_min} 分）`, { direction: "top", offset: [0, -14] });
+        m.on("click", () => selectParking(p.id, true));
+      });
+    }
+
+    function renderList() {
+      const container = document.getElementById("parking-list");
+      const visible = getFilteredParkings();
+      document.getElementById("result-count").textContent = `顯示 ${visible.length} 處停車場`;
+      container.innerHTML = visible.map(p => {
+        const isSel = p.id === state.selectedId;
+        const color = p.category === "public" ? "#16a34a" : "#2563eb";
+        return `
+          <button data-id="${p.id}" class="parking-card ${isSel ? "selected" : ""}">
+            <div class="card-top">
+              <div class="card-title">
+                <span class="rank-badge" style="background:${color}">${p.rank}</span>
+                <span class="name">${p.name}</span>
+              </div>
+              <span class="dist-pill">${p.walk_min} 分・${p.walk_m}m</span>
+            </div>
+            <div class="card-mid">
+              <span class="type-tag" style="color:${color};border-color:${color}">${p.typeLabel}</span>
+              <span style="color:var(--muted)">${p.priceText.split("（")[0]}</span>
+            </div>
+            <div class="card-bot">
+              <span>📞 ${p.phone}</span>
+              <span style="color:var(--link);font-weight:600">${isSel ? "已選取 ▸" : "看路線"}</span>
+            </div>
+          </button>`;
+      }).join("");
+      container.querySelectorAll(".parking-card").forEach(btn => {
+        btn.addEventListener("click", () => selectParking(btn.dataset.id, true));
+      });
+    }
+
+    function renderDetail() {
+      const panel = document.getElementById("detail-panel");
+      const p = PARKINGS.find(x => x.id === state.selectedId) || PARKINGS[0];
+      const color = p.category === "public" ? "#16a34a" : "#2563eb";
+      const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${ORIGIN.lat},${ORIGIN.lng}&destination=${p.lat},${p.lng}&travelmode=walking`;
+      panel.innerHTML = `
+        <div class="detail-wrap">
+          <div class="detail-info">
+            <div class="detail-head">
+              <span class="rank-badge" style="background:${color}">${p.rank}</span>
+              <h2>${p.name}</h2>
+              <span class="type-tag" style="font-size:11px;color:${color};border-color:${color}">${p.typeLabel}</span>
+            </div>
+            <div class="detail-meta">
+              <span>📍 ${p.address}</span>
+              <span>🏢 營運：${p.operator}</span>
+            </div>
+            <div class="stat-grid">
+              <div class="stat-box">
+                <div class="stat-label">從台北親家步行</div>
+                <div class="stat-val">約 ${p.walk_min} 分鐘（${p.walk_m} 公尺）</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">聯絡電話</div>
+                <div class="stat-val">${p.phone}${p.altPhone ? ` <span style="font-weight:400;color:var(--muted);font-size:12px">/ ${p.altPhone}</span>` : ""}</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">參考月租</div>
+                <div class="stat-val" style="font-size:12px">${p.priceText}</div>
+              </div>
+            </div>
+            <p class="note">💡 ${p.note}</p>
+          </div>
+          <div class="actions">
+            <button id="copy-phone-btn" class="btn btn-primary">複製電話</button>
+            <a href="tel:${p.phone.replace(/[^0-9]/g, "")}" class="btn">撥打電話</a>
+            <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-link">Google 步行導航 ↗</a>
+          </div>
+        </div>`;
+      document.getElementById("copy-phone-btn").addEventListener("click", () => {
+        navigator.clipboard?.writeText(p.phone).catch(() => {});
+        const toast = document.getElementById("toast");
+        toast.textContent = `已複製：${p.phone}`;
+        toast.style.opacity = "1";
+        setTimeout(() => { toast.style.opacity = "0"; }, 1800);
+      });
+    }
+
+    function selectParking(id, pan = true) {
+      state.selectedId = id;
+      renderList();
+      renderMap(pan);
+      renderDetail();
+    }
+
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.filter = btn.dataset.filter;
+        document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b === btn));
+        const visible = getFilteredParkings();
+        if (visible.length && !visible.some(p => p.id === state.selectedId)) state.selectedId = visible[0].id;
+        renderList();
+        renderMap(true);
+        renderDetail();
+      });
+    });
+
+    document.getElementById("sort-select").addEventListener("change", e => {
+      state.sort = e.target.value;
+      renderList();
+      renderMap(false);
+    });
+
+    document.getElementById("toggle-rings").addEventListener("change", e => {
+      if (e.target.checked) ringsLayer.addTo(map);
+      else map.removeLayer(ringsLayer);
+    });
+
+    renderList();
+    renderMap(true);
+    renderDetail();
+  </script>
+</body>
+</html>
